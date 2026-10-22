@@ -41,7 +41,7 @@ function Brand() {
   );
 }
 
-function Shell({ initialUser, children }: { initialUser: Me; children: React.ReactNode }) {
+function Shell({ initialUser, emailReady, children }: { initialUser: Me; emailReady: boolean; children: React.ReactNode }) {
   const path = usePathname();
   const sp = useSearchParams();
   const verify = sp.get('verify');
@@ -93,9 +93,11 @@ function Shell({ initialUser, children }: { initialUser: Me; children: React.Rea
             {verify === 'invalid' && <div className="notice" role="alert" style={{ marginBottom: 16, background: 'var(--warn-bg)' }}>That confirmation link has expired or was already used.{!user.email_verified && ' Send a new one below.'}</div>}
             {!user.is_demo && !user.email_verified && (
               <div className="notice" style={{ marginBottom: 16, background: 'var(--warn-bg)', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }} data-testid="verify-banner">
-                <span>{verify === 'sent' ? `Account created. We sent a confirmation link to ${user.email}.` : `Confirm your email (${user.email}) so you can reset your password if you forget it.`}
+                <span>{!emailReady && !devLink
+                    ? `Email isn’t set up on this site yet, so no confirmation link could be sent to ${user.email}. Everything else works; you can confirm later.`
+                    : verify === 'sent' ? `Account created. We sent a confirmation link to ${user.email}.` : `Confirm your email (${user.email}) so you can reset your password if you forget it.`}
                   {devLink && <> <a className="link" href={devLink}>Developer confirmation link</a></>}</span>
-                <ResendVerify compact />
+                {(emailReady || devLink) && <ResendVerify compact />}
               </div>
             )}
             {children}
@@ -107,12 +109,12 @@ function Shell({ initialUser, children }: { initialUser: Me; children: React.Rea
   );
 }
 
-export default function AppShell({ user, children }: { user: Me; children: React.ReactNode }) {
+export default function AppShell({ user, emailReady = false, children }: { user: Me; emailReady?: boolean; children: React.ReactNode }) {
   return (
     <SWRConfig value={{ fetcher, revalidateOnFocus: true, dedupingInterval: 1500, shouldRetryOnError: false }}>
       <MotionConfig reducedMotion="user">
         <ToastProvider>
-          <Shell initialUser={user}>{children}</Shell>
+          <Shell initialUser={user} emailReady={emailReady}>{children}</Shell>
         </ToastProvider>
       </MotionConfig>
     </SWRConfig>
