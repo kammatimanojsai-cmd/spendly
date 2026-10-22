@@ -206,7 +206,8 @@ try {
     assert.equal(d.month.expense, monthTx.reduce((s, t) => s + t.amount, 0));
     assert.equal(d.safeToSpend.basis, 'budget');
     assert.equal(d.safeToSpend.breakdown.reduce((s, x) => s + x.amount, 0), d.safeToSpend.pool);
-    assert.equal(d.safeToSpend.perDay, Math.max(0, Math.floor(d.safeToSpend.pool / d.safeToSpend.daysLeft)));
+    // rounded down to whole rupees
+    assert.equal(d.safeToSpend.perDay, Math.max(0, Math.floor(d.safeToSpend.pool / d.safeToSpend.daysLeft / 100) * 100));
     assert.equal(d.cashflow.length, 6);
     assert.ok(d.accounts.length === 3 && d.goals.length === 1);
   });

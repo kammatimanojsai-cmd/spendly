@@ -46,6 +46,25 @@ export async function seedDemo(userId: number, today: ISODate) {
     const card = await acc('Credit card (demo)', 'card', '#7A5CFA', 0);
     const upi = await acc('UPI wallet', 'wallet', '#00B8A9', 120000);
 
+    // Rows are collected and written in batches: a few round trips instead of ~600.
+    type TxRow = { account_id: number; kind: string; amount: number; category_id?: number | null; to_account_id?: number | null; occurred_on: string; merchant?: string | null; note?: string | null; source?: string; recurring_id?: number | null; occurrence_index?: number | null };
+    const rows: TxRow[] = [];
+    const add = (t: TxRow) => rows.push(t);
+    const flush = async () => {
+      const cols = ['user_id', 'account_id', 'kind', 'amount', 'category_id', 'to_account_id', 'occurred_on', 'merchant', 'note', 'source', 'recurring_id', 'occurrence_index'];
+      for (let i = 0; i < rows.length; i += 150) {
+        const chunk = rows.slice(i, i + 150);
+        const params: unknown[] = [];
+        const values = chunk.map((t) => {
+          const v = [userId, t.account_id, t.kind, t.amount, t.category_id ?? null, t.to_account_id ?? null, t.occurred_on, t.merchant ?? null, t.note ?? null, t.source ?? 'manual', t.recurring_id ?? null, t.occurrence_index ?? null];
+          params.push(...v);
+          return `(${v.map((_, k) => `$${params.length - v.length + k + 1}`).join(',')})`;
+        });
+        await q(`INSERT INTO sp_transactions (${cols.join(',')}) VALUES ${values.join(',')}`, params);
+      }
+      rows.length = 0;
+    };
+
     const r = rng(42);
     const pick = <T,>(a: T[]) => a[Math.floor(r() * a.length)];
     const between = (lo: number, hi: number) => Math.round((lo + r() * (hi - lo)) / 100) * 100; // whole rupees
@@ -63,22 +82,20 @@ export async function seedDemo(userId: number, today: ISODate) {
     for (let d = firstMonth; d <= today; d = addDays(d, 1)) {
       for (const [c, merchants, [lo, hi], perWeek, accts] of spend) {
         if (r() < perWeek / 7) {
-          await q(`INSERT INTO sp_transactions (user_id, account_id, kind, amount, category_id, occurred_on, merchant) VALUES ($1,$2,'expense',$3,$4,$5,$6)`,
-            [userId, pick(accts), between(lo, hi), cat[c], d, pick(merchants)]);
+          const account_id = pick(accts), amount = between(lo, hi);
+          add({ account_id, kind: 'expense', amount, category_id: cat[c], occurred_on: d, merchant: pick(merchants) });
         }
       }
       // top up everyday wallets from the bank, like a real month
       if (d.endsWith('-02') || d.endsWith('-17')) {
-        await q(`INSERT INTO sp_transactions (user_id, account_id, kind, amount, to_account_id, occurred_on, note) VALUES ($1,$2,'transfer',$3,$4,$5,'UPI top-up')`, [userId, bank, 1200000, upi, d]);
-        await q(`INSERT INTO sp_transactions (user_id, account_id, kind, amount, to_account_id, occurred_on, note) VALUES ($1,$2,'transfer',$3,$4,$5,'ATM withdrawal')`, [userId, bank, 500000, cash, d]);
+        add({ account_id: bank, kind: 'transfer', amount: 1200000, to_account_id: upi, occurred_on: d, note: 'UPI top-up' });
+        add({ account_id: bank, kind: 'transfer', amount: 500000, to_account_id: cash, occurred_on: d, note: 'ATM withdrawal' });
       }
       if (d.endsWith('-15') && d < today) {
-        await q(`INSERT INTO sp_transactions (user_id, account_id, kind, amount, to_account_id, occurred_on, note) VALUES ($1,$2,'transfer',$3,$4,$5,'Card bill payment')`,
-          [userId, bank, between(800000, 1400000), card, d]);
+        add({ account_id: bank, kind: 'transfer', amount: between(800000, 1400000), to_account_id: card, occurred_on: d, note: 'Card bill payment' });
       }
     }
-    await q(`INSERT INTO sp_transactions (user_id, account_id, kind, amount, category_id, occurred_on, merchant, note) VALUES ($1,$2,'income',$3,$4,$5,'Client project','Logo design')`,
-      [userId, bank, 1800000, cat['Freelance'], addDays(monthStart(today), -12)]);
+    add({ account_id: bank, kind: 'income', amount: 1800000, category_id: cat['Freelance'], occurred_on: addDays(monthStart(today), -12), merchant: 'Client project', note: 'Logo design' });
 
     // Recurring: salary posts itself; rent, phone and streaming are bills you mark as paid.
     const rule = (title: string, kind: string, amount: number, account: number, category: number, startDay: number, mode: string, freq = 'monthly') =>
@@ -96,11 +113,11 @@ export async function seedDemo(userId: number, today: ISODate) {
     for (const b of bills) {
       let i = 0;
       for (let date = occurrence(b, 0); date < today; date = occurrence(b, ++i)) {
-        await q(`INSERT INTO sp_transactions (user_id, account_id, kind, amount, category_id, occurred_on, merchant, source, recurring_id, occurrence_index) VALUES ($1,$2,'expense',$3,$4,$5,$6,'bill',$7,$8)`,
-          [userId, b.account_id, b.amount, b.category_id, date, b.title, b.id, i]);
+        add({ account_id: b.account_id, kind: 'expense', amount: b.amount, category_id: b.category_id, occurred_on: date, merchant: b.title, source: 'bill', recurring_id: b.id, occurrence_index: i });
       }
       await q(`UPDATE sp_recurring SET next_index = $2 WHERE id = $1`, [b.id, i]);
     }
+    await flush();
 
     for (const [c, amount] of [['Food & dining', 900000], ['Groceries', 1000000], ['Transport', 500000], ['Shopping', 600000], ['Entertainment', 300000]] as const) {
       await q(`INSERT INTO sp_budgets (user_id, category_id, amount) VALUES ($1,$2,$3)`, [userId, cat[c], amount]);
