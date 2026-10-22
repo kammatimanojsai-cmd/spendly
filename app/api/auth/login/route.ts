@@ -2,6 +2,7 @@ import { route, body, ok, HttpError } from '@/lib/server/api';
 import { one } from '@/lib/server/db';
 import { createSession, checkPassword, rateLimit, clearRateLimit } from '@/lib/server/auth';
 import { loginSchema } from '@/lib/schemas';
+import { notifyAdminLogin } from '@/lib/server/email';
 
 // A real hash so unknown emails take as long as wrong passwords (no account enumeration by timing).
 const DUMMY = '$2b$11$iMTSGg7hWr0N/Rdp7h6VPOxefNpUu47..1cS4RPVI1ZlPxwjWvCJu';
@@ -15,5 +16,6 @@ export const POST = route(async ({ req }) => {
   if (!u || !good) throw new HttpError(401, 'That email and password don’t match.');
   await clearRateLimit(key);
   await createSession(u.id);
+  notifyAdminLogin(u.id); // only on success; failed attempts return above and never email
   return ok({ ok: true });
 }, { auth: false });

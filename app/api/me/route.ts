@@ -9,7 +9,7 @@ export const PATCH = route(async ({ req, user }) => {
   const s = await body(req, settingsSchema);
   const u = await one(
     `UPDATE sp_users SET name = COALESCE($2, name), currency = COALESCE($3, currency), timezone = COALESCE($4, timezone), onboarded = COALESCE($5, onboarded)
-      WHERE id = $1 RETURNING id, name, email, currency, timezone, is_demo, onboarded, created_at`,
+      WHERE id = $1 RETURNING id, name, email, currency, timezone, is_demo, onboarded, email_verified, created_at`,
     [user.id, s.name ?? null, s.currency ?? null, s.timezone ?? null, s.onboarded ?? null]);
   return ok({ user: u });
 });

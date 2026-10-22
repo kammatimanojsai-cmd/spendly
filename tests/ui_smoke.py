@@ -48,8 +48,9 @@ with sync_playwright() as p:
             page.get_by_role('button', name='Show password').click()
             assert page.get_by_label('Password', exact=True).get_attribute('type') == 'text'
             page.get_by_role('button', name='Create account').click()
-            page.wait_for_url(BASE + '/app')
+            page.wait_for_url(re.compile(re.escape(BASE) + r'/app(\?.*)?$'))
             expect(page.get_by_role('heading', name='Three things to get going')).to_be_visible()
+            expect(page.get_by_test_id('verify-banner')).to_contain_text('We sent a confirmation link to ' + email)
 
         @step('add an expense through the sheet; Escape closes it')
         def _():
@@ -128,6 +129,23 @@ with sync_playwright() as p:
                 page.get_by_role('link', name='Transactions (CSV)').click()
             text = Path(d.value.path()).read_text(encoding='utf-8-sig')
             assert 'Spice Route Kitchen' in text and ',receipt' in text, text[:300]
+
+        @step('forgot password and privacy pages work')
+        def _():
+            p2 = browser.new_page()
+            p2.goto(BASE + '/login')
+            p2.get_by_role('link', name='Forgot password?').click()
+            p2.get_by_label('Email').fill('nobody@example.com')
+            p2.get_by_role('button', name='Send reset link').click()
+            expect(p2.get_by_text('If that email has a Spendly account')).to_be_visible()
+            p2.goto(BASE + '/reset-password?token=bogus')
+            p2.get_by_label('New password', exact=True).fill('Spendly2030')
+            p2.get_by_label('Confirm new password').fill('Spendly2030')
+            p2.get_by_role('button', name='Save new password').click()
+            expect(p2.get_by_text('expired or was already used')).to_be_visible()
+            p2.goto(BASE + '/privacy')
+            expect(p2.get_by_role('heading', name='Site owner notifications')).to_be_visible()
+            p2.close()
 
         @step('mobile: no horizontal scroll, tab bar fits, settings reachable')
         def _():

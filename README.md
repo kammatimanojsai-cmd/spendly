@@ -32,6 +32,7 @@ Most people can't answer "how much can I safely spend today?" Bank apps show bal
 | Insights | Plain-language cards from real data: over budget, running hot, trends vs your own average (day-to-day spending only, so rent doesn't look like a spike), month-over-month pace, savings rate, most-visited merchant. |
 | Charts | Hand-built animated SVG donut, 6-month cash-flow bars and goal rings, each with a text alternative. |
 | Data | CSV export (with spreadsheet formula-injection guard), full JSON backup, and account deletion that removes everything. |
+| Email | Confirmation link on sign-up and a welcome email once confirmed. Forgot password with a single-use 1-hour reset link that signs out other sessions. Admin notices to the owner for new registrations and successful sign-ins (de-duplicated for 30 min, never on failed sign-ins, never containing passwords or links). All sent after the response, so a mail outage can't block sign-in. Email tokens are stored hashed. |
 | Demo | One click opens a sandbox with about 3 months of clearly labelled sample data, deleted after 24 hours. |
 
 ![Plan](docs/screenshots/plan.png)
@@ -72,8 +73,8 @@ Pure, framework-free logic lives in `lib/` and is unit-tested directly:
 | Layer | Command | Covers |
 |---|---|---|
 | Unit (18) | `npm test` | recurrence edge cases (month-end, leap day, end dates, caps), receipt parsing on 3 realistic receipts, money parsing and formatting, safe-to-spend and goal maths, insight rules, CSV and ICS output |
-| API end-to-end (20) | `npm run test:e2e` | sign-up, login and rate limits, CSRF, validation, balances, pagination, budgets, idempotent recurring, bills, goals, dashboard maths consistency, exports, **cross-user isolation**, demo, account deletion |
-| Browser journeys (10) | `python tests/ui_smoke.py` | real UI sign-up, add, edit and search, **real OCR on a receipt image**, budget, bill, goal, CSV download, keyboard (Esc and focus trap), mobile layout, no page errors |
+| API end-to-end (24) | `npm run test:e2e` | **real emails via a local SMTP catcher** (verification, welcome, reset, admin notices with no secrets and no duplicates), sign-up, login and rate limits, CSRF, validation, balances, pagination, budgets, idempotent recurring, bills, goals, dashboard maths consistency, exports, **cross-user isolation**, demo, account deletion |
+| Browser journeys (11) | `python tests/ui_smoke.py` | real UI sign-up, add, edit and search, **real OCR on a receipt image**, budget, bill, goal, CSV download, forgot/reset and privacy pages, keyboard (Esc and focus trap), mobile layout, no page errors |
 
 GitHub Actions runs all three on every push (`.github/workflows/ci.yml`).
 
@@ -84,7 +85,17 @@ npm install
 npm run dev            # http://localhost:3000, uses embedded PGlite in ./.pglite, no setup
 ```
 
-Production needs one environment variable, `DATABASE_URL` (any Postgres; Neon's free tier works).
+Production needs `DATABASE_URL` (any Postgres; Neon's free tier works). Email is optional:
+
+| Variable | Purpose |
+|---|---|
+| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` | SMTP sending, e.g. Gmail with an App Password (`smtp.gmail.com`, `465`) |
+| `RESEND_API_KEY` | Or send through Resend instead |
+| `EMAIL_FROM` | Optional sender, defaults to `Spendly <SMTP_USER>` |
+| `ADMIN_EMAIL` | Owner inbox for registration and sign-in notices (unset = off) |
+| `ADMIN_NOTIFY_LOGINS` | `false` keeps registration notices but stops sign-in notices |
+
+`/api/health` reports the email provider and the last send attempt (status and provider reply, never an address).
 
 ```bash
 npm run build && npm start      # then, in another terminal:

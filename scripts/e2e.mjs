@@ -4,6 +4,27 @@
 import assert from 'node:assert/strict';
 
 const BASE = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+// With E2E_SMTP_PORT set, a local SMTP catcher receives the app's real emails (server started with
+// SMTP_HOST=127.0.0.1 SMTP_PORT=<port> ADMIN_EMAIL=admin@spendly.test).
+const SMTP_PORT = Number(process.env.E2E_SMTP_PORT || 0);
+const ADMIN = process.env.E2E_ADMIN_EMAIL || 'admin@spendly.test';
+const inbox = [];
+let sink = null;
+if (SMTP_PORT) {
+  const { SMTPServer } = await import('smtp-server');
+  const { simpleParser } = await import('mailparser');
+  sink = new SMTPServer({ authOptional: true, disabledCommands: ['STARTTLS'], logger: false,
+    onAuth(_a, _s, cb) { cb(null, { user: 'test' }); },
+    onData(stream, _s, cb) { simpleParser(stream).then((m) => { inbox.push(m); cb(); }).catch(cb); } });
+  await new Promise((r) => sink.listen(SMTP_PORT, '127.0.0.1', r));
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const waitMail = async (pred, ms = 15000) => {
+  const t = Date.now();
+  while (Date.now() - t < ms) { const m = inbox.find(pred); if (m) return m; await sleep(150); }
+  throw new Error('timed out waiting for email');
+};
+const mails = (pred) => inbox.filter(pred);
 const HOST = new URL(BASE).host;
 
 class Client {
@@ -86,6 +107,60 @@ try {
     const ok = await a.json('/api/auth/login', { method: 'POST', body: { email: emailA, password: pw } });
     assert.equal(ok.status, 200, ok.error);
   });
+
+  if (SMTP_PORT) {
+    await step('email: verification + admin registration notice, no secrets', async () => {
+      const v = await waitMail((m) => m.to.text.includes(emailA) && /Confirm your Spendly email/.test(m.subject));
+      ids.verifyLink = (v.text.match(/https?:\/\/\S+\/verify\?token=\S+/) || [])[0];
+      assert.ok(ids.verifyLink, 'no link');
+      const adm = await waitMail((m) => m.to.text.includes(ADMIN) && /New Spendly registration/.test(m.subject) && m.text.includes(emailA));
+      assert.match(adm.text, /Registered: .+IST/);
+      for (const secret of [pw, 'token=', '/verify', 'sp_session']) assert.ok(!adm.text.includes(secret) && !adm.html.includes(secret), `admin mail leaks ${secret}`);
+      await sleep(800);
+      assert.equal(mails((m) => /New Spendly registration/.test(m.subject) && m.text.includes(emailA)).length, 1, 'duplicate registration notice');
+    });
+
+    await step('email: admin login notice only on success, de-duplicated', async () => {
+      const n = await waitMail((m) => m.to.text.includes(ADMIN) && /Spendly login/.test(m.subject) && m.text.includes(emailA));
+      assert.match(n.text, /Signed in: .+IST/);
+      assert.ok(!n.text.includes(pw) && !n.text.includes('wrong-pass1'));
+      await a.json('/api/auth/login', { method: 'POST', body: { email: emailA, password: 'wrong-pass1' } });
+      assert.equal((await a.json('/api/auth/login', { method: 'POST', body: { email: emailA, password: pw } })).status, 200);
+      await sleep(1200);
+      assert.equal(mails((m) => /Spendly login/.test(m.subject) && m.text.includes(emailA)).length, 1);
+    });
+
+    await step('email: confirm link verifies once and sends one welcome email', async () => {
+      assert.equal((await a.json('/api/me')).user.email_verified, false);
+      const path = ids.verifyLink.replace(/^https?:\/\/[^/]+/, '');
+      const r = await a.req(path);
+      assert.match(String(r.headers.get('location')), /verify=success/);
+      assert.equal((await a.json('/api/me')).user.email_verified, true);
+      await waitMail((m) => m.to.text.includes(emailA) && /Welcome to Spendly/.test(m.subject));
+      const again = await a.req(path);
+      assert.match(String(again.headers.get('location')), /verify=invalid/, 'link must be single-use');
+      await sleep(800);
+      assert.equal(mails((m) => m.to.text.includes(emailA) && /Welcome/.test(m.subject)).length, 1);
+    });
+
+    await step('email: forgot/reset password end to end', async () => {
+      const anon = new Client();
+      const unknown = await anon.json('/api/auth/forgot', { method: 'POST', body: { email: 'nobody-here@example.com' } });
+      const known = await anon.json('/api/auth/forgot', { method: 'POST', body: { email: emailA } });
+      assert.equal(unknown.message, known.message, 'must not reveal which emails exist');
+      const m = await waitMail((x) => x.to.text.includes(emailA) && /Reset your Spendly password/.test(x.subject));
+      const token = new URL((m.text.match(/https?:\/\/\S+\/reset-password\?token=\S+/) || [])[0]).searchParams.get('token');
+      assert.equal((await anon.json('/api/auth/reset', { method: 'POST', body: { token, password: 'short' } })).status, 400);
+      const newPw = 'Spendly2027';
+      assert.equal((await anon.json('/api/auth/reset', { method: 'POST', body: { token, password: newPw } })).status, 200);
+      assert.equal((await anon.json('/api/auth/reset', { method: 'POST', body: { token, password: 'Another2027' } })).status, 400, 'token reuse');
+      assert.equal((await a.json('/api/me')).status, 401, 'old sessions are signed out');
+      const fresh = new Client();
+      assert.equal((await fresh.json('/api/auth/login', { method: 'POST', body: { email: emailA, password: pw } })).status, 401, 'old password still works');
+      assert.equal((await a.json('/api/auth/login', { method: 'POST', body: { email: emailA, password: newPw } })).status, 200);
+      ids.pw = newPw;
+    });
+  }
 
   await step('accounts: create with opening balance, rename', async () => {
     const r = await a.json('/api/accounts', { method: 'POST', body: { name: 'Credit card', kind: 'card', color: '#7A5CFA', opening_balance: 0 } });
@@ -258,6 +333,7 @@ try {
     assert.ok(dash.month.income > 0 && dash.month.expense > 0);
     assert.ok(dash.goals.length === 3);
     assert.ok(dash.insights.length >= 1);
+    if (SMTP_PORT) { await sleep(800); assert.ok(!inbox.some((m) => m.to.text.includes('demo.spendly.invalid') || /Demo explorer/.test(m.text)), 'demo users must never be emailed'); }
     const sal = (await d.json('/api/transactions?q=Salary&limit=10')).items;
     assert.ok(sal.length >= 3, 'salary should auto-post each month');
     assert.equal((await d.json('/api/auth/login', { method: 'POST', body: { email: me.user.email, password: 'x' } })).status, 401, 'demo users cannot log in with a password');
@@ -280,6 +356,7 @@ try {
 } catch {
   // reported below
 } finally {
+  sink?.close();
   const failed = results.filter((r) => r[0] === 'FAIL').length;
   console.log(`\n${results.length - failed}/${results.length} steps passed`);
   process.exit(failed ? 1 : 0);

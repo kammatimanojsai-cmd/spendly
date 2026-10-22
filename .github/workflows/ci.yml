@@ -24,14 +24,22 @@ jobs:
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: 1
-      - name: Start server (embedded PGlite database)
+      - name: Start server (embedded PGlite database, SMTP pointed at the test catcher)
+        env:
+          SMTP_HOST: 127.0.0.1
+          SMTP_PORT: 2526
+          SMTP_USER: test
+          SMTP_PASS: test
+          EMAIL_FROM: Spendly <no-reply@spendly.test>
+          ADMIN_EMAIL: admin@spendly.test
         run: |
           nohup npm start -- -p 3000 > server.log 2>&1 &
           for i in $(seq 1 60); do curl -fs localhost:3000/api/health && break; sleep 1; done
-      - name: API end-to-end tests
+      - name: API end-to-end tests (incl. real emails via a local SMTP catcher)
         run: npm run test:e2e
         env:
           BASE_URL: http://localhost:3000
+          E2E_SMTP_PORT: 2526
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

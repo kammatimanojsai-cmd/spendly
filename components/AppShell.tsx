@@ -2,7 +2,8 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { ResendVerify } from './auth/AuthForms';
 import useSWR, { SWRConfig } from 'swr';
 import { MotionConfig } from 'motion/react';
 import Icon from './Icon';
@@ -12,7 +13,7 @@ import { formatMoney } from '@/lib/money';
 
 export type Account = { id: number; name: string; kind: string; color: string; balance: number; archived: boolean; opening_balance: number; tx_count: number };
 export type Category = { id: number; name: string; kind: 'expense' | 'income'; glyph: string; color: string; tx_count?: number };
-export type Me = { id: number; name: string; email: string; currency: string; timezone: string; is_demo: boolean; onboarded: boolean };
+export type Me = { id: number; name: string; email: string; currency: string; timezone: string; is_demo: boolean; onboarded: boolean; email_verified: boolean };
 
 type Ctx = {
   user: Me;
@@ -42,6 +43,9 @@ function Brand() {
 
 function Shell({ initialUser, children }: { initialUser: Me; children: React.ReactNode }) {
   const path = usePathname();
+  const sp = useSearchParams();
+  const verify = sp.get('verify');
+  const devLink = sp.get('dev');
   const { data: me } = useSWR<{ user: Me }>('/api/me', { fallbackData: { user: initialUser } });
   const { data: acc } = useSWR<{ accounts: Account[] }>('/api/accounts');
   const { data: cat } = useSWR<{ categories: Category[] }>('/api/categories');
@@ -82,6 +86,16 @@ function Shell({ initialUser, children }: { initialUser: Me; children: React.Rea
               <div className="notice demo" style={{ marginBottom: 16 }}>
                 <span>You’re exploring sample data. It’s deleted after 24 hours.</span>
                 <Link href="/signup" className="btn btn-sm btn-primary">Start your own</Link>
+              </div>
+            )}
+            {verify === 'success' && <div className="notice" role="status" style={{ marginBottom: 16, background: 'var(--good-bg)' }}>Email confirmed. A welcome email is on its way.</div>}
+            {sp.get('reset') && <div className="notice" role="status" style={{ marginBottom: 16, background: 'var(--good-bg)' }}>Password changed. You’re signed in, and other devices were signed out.</div>}
+            {verify === 'invalid' && <div className="notice" role="alert" style={{ marginBottom: 16, background: 'var(--warn-bg)' }}>That confirmation link has expired or was already used.{!user.email_verified && ' Send a new one below.'}</div>}
+            {!user.is_demo && !user.email_verified && (
+              <div className="notice" style={{ marginBottom: 16, background: 'var(--warn-bg)', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }} data-testid="verify-banner">
+                <span>{verify === 'sent' ? `Account created. We sent a confirmation link to ${user.email}.` : `Confirm your email (${user.email}) so you can reset your password if you forget it.`}
+                  {devLink && <> <a className="link" href={devLink}>Developer confirmation link</a></>}</span>
+                <ResendVerify compact />
               </div>
             )}
             {children}

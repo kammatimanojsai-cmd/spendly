@@ -16,6 +16,8 @@ export default async function Login() {
         <h1>Welcome back</h1>
         <p className="muted" style={{ marginBottom: 18 }}>Sign in to see today’s number.</p>
         <AuthForm mode="login" />
+        <p className="hint" style={{ marginTop: 12 }}><Link className="link" href="/forgot-password">Forgot password?</Link></p>
+        <p className="hint" style={{ marginTop: 8 }}>The site owner gets a notice with your name, email and sign-in time. <Link className="link" href="/privacy">Privacy</Link></p>
         <p className="hint" style={{ marginTop: 16 }}>New here? <Link className="link" href="/signup">Create an account</Link> or <DemoButton className="link" label="try the demo" /></p>
       </div>
     </main>

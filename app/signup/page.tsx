@@ -17,6 +17,7 @@ export default async function Signup() {
         <h1>Start tracking</h1>
         <p className="muted" style={{ marginBottom: 18 }}>Free. We start you with Cash and Bank accounts and everyday categories.</p>
         <AuthForm mode="signup" />
+        <p className="hint" style={{ marginTop: 12 }}>We’ll email you a link to confirm your address. The site owner is notified of your name, email and sign-up time; never your password. <Link className="link" href="/privacy">Privacy</Link></p>
         <p className="hint" style={{ marginTop: 16 }}>Already have an account? <Link className="link" href="/login">Sign in</Link></p>
       </div>
     </main>

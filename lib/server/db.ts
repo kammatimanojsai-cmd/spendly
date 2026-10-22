@@ -66,6 +66,26 @@ const SCHEMA = [
      is_demo BOOLEAN NOT NULL DEFAULT FALSE,
      onboarded BOOLEAN NOT NULL DEFAULT FALSE,
      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+  `ALTER TABLE sp_users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE sp_users ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE sp_users ADD COLUMN IF NOT EXISTS admin_signup_notified BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE sp_users ADD COLUMN IF NOT EXISTS last_login_notified_at TIMESTAMPTZ`,
+  // single-use links (verify / reset); only a SHA-256 of the token is stored
+  `CREATE TABLE IF NOT EXISTS sp_email_tokens (
+     token_hash TEXT PRIMARY KEY,
+     user_id INTEGER NOT NULL REFERENCES sp_users(id) ON DELETE CASCADE,
+     purpose TEXT NOT NULL CHECK (purpose IN ('verify','reset')),
+     expires_at TIMESTAMPTZ NOT NULL,
+     used_at TIMESTAMPTZ)`,
+  // every send attempt, for delivery diagnostics (no message bodies are stored)
+  `CREATE TABLE IF NOT EXISTS sp_email_log (
+     id SERIAL PRIMARY KEY,
+     user_id INTEGER REFERENCES sp_users(id) ON DELETE SET NULL,
+     kind TEXT NOT NULL,
+     status TEXT NOT NULL,
+     provider TEXT,
+     detail TEXT,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
   `CREATE TABLE IF NOT EXISTS sp_sessions (
      id TEXT PRIMARY KEY,
      user_id INTEGER NOT NULL REFERENCES sp_users(id) ON DELETE CASCADE,

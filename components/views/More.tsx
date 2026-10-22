@@ -4,6 +4,7 @@ import { useState } from 'react';
 import useSWR from 'swr';
 import { useRouter } from 'next/navigation';
 import { useApp, type Account, type Category } from '../AppShell';
+import { ResendVerify } from '../auth/AuthForms';
 import { Field, Sheet, api, refreshAll, useForm, useToast, Skeleton } from '../ui';
 import Icon, { Glyph } from '../Icon';
 import { parseAmount, minorFactor, CURRENCIES } from '@/lib/money';
@@ -168,7 +169,9 @@ export default function MoreView() {
 
         <section className="card card-pad" aria-labelledby="acct-h">
           <h2 id="acct-h" style={{ marginBottom: 6 }}>{user.is_demo ? 'Demo workspace' : 'Account'}</h2>
-          <p className="muted" style={{ marginBottom: 12 }}>{user.is_demo ? 'This sandbox and its sample data are deleted after 24 hours.' : `Signed in as ${user.email}.`}</p>
+          <p className="muted" style={{ marginBottom: 12 }}>{user.is_demo ? 'This sandbox and its sample data are deleted after 24 hours.' : `Signed in as ${user.email}.`}
+            {!user.is_demo && (user.email_verified ? <span className="badge" style={{ marginLeft: 8, background: 'var(--good-bg)' }}>Email confirmed</span> : <span className="badge due" style={{ marginLeft: 8 }}>Not confirmed</span>)}</p>
+          {!user.is_demo && !user.email_verified && <div style={{ marginBottom: 12 }}><ResendVerify compact /></div>}
           <button className="btn" onClick={async () => { await api('/api/auth/logout', { method: 'POST' }); router.push('/'); router.refresh(); }}><Icon name="logout" size={18} />{user.is_demo ? 'Leave demo' : 'Sign out'}</button>
           {!user.is_demo && (
             <details style={{ marginTop: 16 }}>

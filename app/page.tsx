@@ -67,7 +67,7 @@ export default async function Landing() {
       </main>
       <footer className="land-foot">
         <span>Spendly is a portfolio project. Your data is yours: export it or delete it any time.</span>
-        <a href="https://github.com/kammatimanojsai-cmd/spendly">Source on GitHub</a>
+        <span style={{ display: 'flex', gap: 16 }}><Link href="/privacy">Privacy</Link><a href="https://github.com/kammatimanojsai-cmd/spendly">Source on GitHub</a></span>
       </footer>
     </div>
   );
