@@ -1,5 +1,7 @@
 # Spendly
 
+**Live:** https://spendly-iota-gules.vercel.app (try “Explore with sample data”, no sign-up needed)
+
 **Know what you can spend today.** Spendly is a playful, privacy-first personal finance companion. You log money across all your accounts (or scan a receipt), and it turns that into one honest daily number, with the arithmetic shown.
 
 ![Spendly dashboard](docs/screenshots/dashboard.png)
