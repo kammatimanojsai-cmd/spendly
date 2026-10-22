@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests (recurrence, receipt parser, money, insights, exporters)
+        run: npm test
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+      - name: Start server (embedded PGlite database)
+        run: |
+          nohup npm start -- -p 3000 > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -fs localhost:3000/api/health && break; sleep 1; done
+      - name: API end-to-end tests
+        run: npm run test:e2e
+        env:
+          BASE_URL: http://localhost:3000
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Browser journey tests (Playwright, real OCR)
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+          python tests/ui_smoke.py
+        env:
+          BASE_URL: http://localhost:3000
+      - name: Server log
+        if: failure()
+        run: cat server.log
